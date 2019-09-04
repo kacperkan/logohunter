@@ -1,10 +1,11 @@
+from timeit import default_timer as timer
+
 import cv2
 import numpy as np
+from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
 
-from utils import bbox_colors, chunks, draw_annotated_box, features_from_image
-from timeit import default_timer as timer
-from PIL import Image
+from utils import bbox_colors, draw_annotated_box, features_from_image
 
 
 def similarity_cutoff(feat_input, features, threshold=0.95, timing=False):
@@ -24,23 +25,29 @@ def similarity_cutoff(feat_input, features, threshold=0.95, timing=False):
     """
 
     start = timer()
-    cs = cosine_similarity(X = feat_input, Y = features)
+    cs = cosine_similarity(X=feat_input, Y=features)
 
     cutoff_list = []
     cdf_list = []
     for i, cs1 in enumerate(cs):
-        hist, bins = np.histogram(cs1, bins=np.arange(0,1,0.001))
-        cdf = np.cumsum(hist)/len(cs1)
+        hist, bins = np.histogram(cs1, bins=np.arange(0, 1, 0.001))
+        cdf = np.cumsum(hist) / len(cs1)
         cutoff = bins[np.where(cdf < threshold)][-1]
         cutoff_list.append(cutoff)
         cdf_list.append(cdf)
     end = timer()
-    print('Computed similarity cutoffs given inputs in {:.2f}sec'.format(end - start))
+    print(
+        "Computed similarity cutoffs given inputs in {:.2f}sec".format(
+            end - start
+        )
+    )
 
     return cutoff_list, (bins, cdf_list)
 
 
-def load_brands_compute_cutoffs(input_paths, model_preproc, features, threshold = 0.95, timing=False):
+def load_brands_compute_cutoffs(
+    input_paths, model_preproc, features, threshold=0.95, timing=False
+):
     """
     Given paths to input brand images, this is a wrapper to features_from_image()
     and similarity_cutoff().
@@ -65,31 +72,34 @@ def load_brands_compute_cutoffs(input_paths, model_preproc, features, threshold 
         img = cv2.imread(path)
         # apppend images in RGB color ordering
         if img is not None:
-            img_input.append(img[:,:,::-1])
+            img_input.append(img[:, :, ::-1])
         else:
             print(path)
 
-    t_read  = timer()-start
+    t_read = timer() - start
     model, my_preprocess = model_preproc
     img_input = np.array(img_input)
     feat_input = features_from_image(img_input, model, my_preprocess)
-    t_feat = timer()-start
+    t_feat = timer() - start
 
-    sim_cutoff, (bins, cdf_list)= similarity_cutoff(feat_input, features, threshold, timing)
-    t_sim_cut = timer()-start
+    sim_cutoff, (bins, cdf_list) = similarity_cutoff(
+        feat_input, features, threshold, timing
+    )
+    t_sim_cut = timer() - start
 
     if timing:
-        print('Time spent in each section:')
-        print('-reading images: {:.2f}sec\n-features: {:.2f}sec\n-cosine similarity: {:.2f}sec'.format(
-          t_read, t_feat-t_read, t_sim_cut-t_feat
-          ))
+        print("Time spent in each section:")
+        print(
+            "-reading images: {:.2f}sec\n-features: {:.2f}sec\n-cosine similarity: {:.2f}sec".format(
+                t_read, t_feat - t_read, t_sim_cut - t_feat
+            )
+        )
 
-    print('Resulting 95% similarity threshold for targets:')
+    print("Resulting 95% similarity threshold for targets:")
     for path, cutoff in zip(input_paths, sim_cutoff):
-        print('    {}  {:.2f}'.format(path, cutoff))
+        print("    {}  {:.2f}".format(path, cutoff))
 
     return img_input, feat_input, sim_cutoff, (bins, cdf_list)
-
 
 
 def similar_matches(feat_input, features_cand, cutoff_list, bins, cdf_list):
@@ -106,14 +116,18 @@ def similar_matches(feat_input, features_cand, cutoff_list, bins, cdf_list):
       cos_sim: (n_input, n_candidates) cosine similarity matrix between inputs and candidates.
     """
 
-    if len(features_cand)==0:
-        print('Found 0 logos from 0 classes')
+    if len(features_cand) == 0:
+        print("Found 0 logos from 0 classes")
         return {}, np.array([])
 
-    assert feat_input.shape[1] == features_cand.shape[1], 'matrices should have same columns'
-    assert len(cutoff_list) == len(feat_input), 'there should be one similarity cutoff for each input logo'
+    assert (
+        feat_input.shape[1] == features_cand.shape[1]
+    ), "matrices should have same columns"
+    assert len(cutoff_list) == len(
+        feat_input
+    ), "there should be one similarity cutoff for each input logo"
 
-    cos_sim = cosine_similarity(X = feat_input, Y = features_cand)
+    cos_sim = cosine_similarity(X=feat_input, Y=features_cand)
 
     # similarity cutoffs are defined 3 significant digits, approximate cos_sim for consistency
     cos_sim = np.round(cos_sim, 3)
@@ -140,7 +154,7 @@ def similar_matches(feat_input, features_cand, cutoff_list, bins, cdf_list):
                 continue
 
     n_classes = len(np.unique([v[0] for v in matches.values()]))
-    print('Found {} logos from {} classes'.format(len(matches), n_classes))
+    print("Found {} logos from {} classes".format(len(matches), n_classes))
 
     return matches, cos_sim
 
@@ -159,14 +173,14 @@ def draw_matches(img_test, inputs, prediction, matches):
 
     """
 
-    if len(prediction)==0:
+    if len(prediction) == 0:
         return img_test
 
     image = Image.fromarray(img_test)
 
     colors = bbox_colors(len(inputs))
     # for internal consistency, colors in BGR notation
-    colors = np.array(colors)[:,::-1]
+    colors = np.array(colors)[:, ::-1]
 
     # for each input, look for matches and draw them on the image
     match_bbox_list_list = []
@@ -174,7 +188,7 @@ def draw_matches(img_test, inputs, prediction, matches):
     for i in range(len(inputs)):
         match_bbox_list_list.append([])
         for i_cand, (i_match, cdf) in matches.items():
-            if i==i_match:
+            if i == i_match:
                 match_bbox_list_list[i].append(prediction[i_cand])
 
         # print('{} target: {} matches found'.format(inputs[i], len(match_bbox_list_list[i]) ))
@@ -184,24 +198,9 @@ def draw_matches(img_test, inputs, prediction, matches):
     return np.array(new_image)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def main():
-    print('FILL ME')
+    print("FILL ME")
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

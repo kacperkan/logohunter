@@ -1,15 +1,14 @@
-import cv2
-import numpy as np
 import os
-from PIL import Image
 from timeit import default_timer as timer
 
-import utils
+import numpy as np
+from PIL import Image
+
+from similarity import draw_matches, similar_matches
 from utils import contents_of_bbox, features_from_image
-from similarity import load_brands_compute_cutoffs, similar_matches, similarity_cutoff, draw_matches
 
 
-def detect_logo(yolo, img_path, save_img, save_img_path='./', postfix=''):
+def detect_logo(yolo, img_path, save_img, save_img_path="./", postfix=""):
     """
     Call YOLO logo detector on input image, optionally save resulting image.
 
@@ -29,7 +28,7 @@ def detect_logo(yolo, img_path, save_img, save_img_path='./', postfix=''):
             image = image.convert("RGB")
         image_array = np.array(image)
     except:
-        print('File Open Error! Try again!')
+        print("File Open Error! Try again!")
         return None, None
 
     prediction, new_image = yolo.detect_image(image)
@@ -40,8 +39,17 @@ def detect_logo(yolo, img_path, save_img, save_img_path='./', postfix=''):
 
     return prediction, image_array
 
-def match_logo(img_test, prediction, model_preproc, outtxt, input_features_cdf_cutoff_labels,
-               save_img, save_img_path='./', timing=False):
+
+def match_logo(
+    img_test,
+    prediction,
+    model_preproc,
+    outtxt,
+    input_features_cdf_cutoff_labels,
+    save_img,
+    save_img_path="./",
+    timing=False,
+):
     """
     Given an a path to an image and a list of predicted bounding boxes,
     extract features and check each against input brand features. Declare
@@ -71,55 +79,84 @@ def match_logo(img_test, prediction, model_preproc, outtxt, input_features_cdf_c
 
     start = timer()
     model, my_preprocess = model_preproc
-    feat_input, sim_cutoff, bins, cdf_list, input_labels = input_features_cdf_cutoff_labels
+    feat_input, sim_cutoff, bins, cdf_list, input_labels = (
+        input_features_cdf_cutoff_labels
+    )
     # from PIL image to np array
-    #img_test = np.array(image)
+    # img_test = np.array(image)
 
     # img_test = cv2.imread(img_path) # could be removed by passing previous PIL image
-    t_read = timer()-start
+    t_read = timer() - start
     candidates, i_candidates_too_small = contents_of_bbox(img_test, prediction)
     # filter predicted bboxes to discard small logos
-    prediction = [ pred for i, pred in enumerate(prediction) if i not in i_candidates_too_small]
-    t_box = timer()-start
+    prediction = [
+        pred
+        for i, pred in enumerate(prediction)
+        if i not in i_candidates_too_small
+    ]
+    t_box = timer() - start
     features_cand = features_from_image(candidates, model, my_preprocess)
-    t_feat = timer()-start
-    matches, cos_sim = similar_matches(feat_input, features_cand, sim_cutoff, bins, cdf_list)
-    t_match = timer()-start
+    t_feat = timer() - start
+    matches, cos_sim = similar_matches(
+        feat_input, features_cand, sim_cutoff, bins, cdf_list
+    )
+    t_match = timer() - start
 
     img_path = outtxt
     for idx in matches:
         bb = prediction[idx]
         label = input_labels[matches[idx][0]]
-        print('Logo #{} - {} {} - classified as {} {:.2f}'.format(idx,
-          tuple(bb[:2]), tuple(bb[2:4]), label, matches[idx][1]))
+        print(
+            "Logo #{} - {} {} - classified as {} {:.2f}".format(
+                idx, tuple(bb[:2]), tuple(bb[2:4]), label, matches[idx][1]
+            )
+        )
 
-        outtxt += ' {},{},{},{},{},{:.2f},{:.3f}'.format(*bb[:4], label,bb[-1], matches[idx][1])
-    outtxt += '\n'
+        outtxt += " {},{},{},{},{},{:.2f},{:.3f}".format(
+            *bb[:4], label, bb[-1], matches[idx][1]
+        )
+    outtxt += "\n"
 
     new_img = draw_matches(img_test, input_labels, prediction, matches)
-    t_draw = timer()-start
+    t_draw = timer() - start
     if save_img == True:
         save_img_path = os.path.abspath(save_img_path)
-        saved = Image.fromarray(new_img).save(os.path.join(save_img_path, os.path.basename(img_path)))
+        saved = Image.fromarray(new_img).save(
+            os.path.join(save_img_path, os.path.basename(img_path))
+        )
         # save with opencv, remember to flip RGB->BGR
         # saved = cv2.imwrite(os.path.join(save_img_path, os.path.basename(img_path)), new_img[...,::-1])
-    t_save = timer()-start
+    t_save = timer() - start
     if timing:
-        return outtxt, (t_read, t_box-t_read, t_feat-t_box, t_match-t_feat,
-                        t_draw-t_match, t_save-t_draw)
+        return (
+            outtxt,
+            (
+                t_read,
+                t_box - t_read,
+                t_feat - t_box,
+                t_match - t_feat,
+                t_draw - t_match,
+                t_save - t_draw,
+            ),
+        )
 
     return outtxt
 
 
 def detect_video(yolo, video_path, output_path=""):
     import cv2
+
     vid = cv2.VideoCapture(video_path)
     if not vid.isOpened():
         raise IOError("Couldn't open video")
-    video_FourCC    = cv2.VideoWriter_fourcc(*'mp4v') #int(vid.get(cv2.CAP_PROP_FOURCC))
-    video_fps       = vid.get(cv2.CAP_PROP_FPS)
-    video_size      = (int(vid.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                        int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    video_FourCC = cv2.VideoWriter_fourcc(
+        *"mp4v"
+    )  # int(vid.get(cv2.CAP_PROP_FOURCC))
+    video_fps = vid.get(cv2.CAP_PROP_FPS)
+    video_size = (
+        int(vid.get(cv2.CAP_PROP_FRAME_WIDTH)),
+        int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+    )
     isOutput = True if output_path != "" else False
     if isOutput:
         print(output_path, video_FourCC, video_fps, video_size)
@@ -133,12 +170,12 @@ def detect_video(yolo, video_path, output_path=""):
         if not return_value:
             break
         # opencv images are BGR, translate to RGB
-        frame = frame[:,:,::-1]
+        frame = frame[:, :, ::-1]
         image = Image.fromarray(frame)
         out_pred, image = yolo.detect_image(image)
         result = np.asarray(image)
         if isOutput:
-            out.write(result[:,:,::-1])
+            out.write(result[:, :, ::-1])
     vid.release()
     out.release()
     yolo.close_session()
