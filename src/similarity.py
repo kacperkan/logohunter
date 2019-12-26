@@ -45,6 +45,41 @@ def similarity_cutoff(feat_input, features, threshold=0.95, timing=False):
     return cutoff_list, (bins, cdf_list)
 
 
+def compute_cutoffs(
+        brand, model_preproc, features, threshold=0.95, timing=False
+):
+    """
+    Given paths to input brand images, this is a wrapper to features_from_image()
+    and similarity_cutoff().
+
+    Args:
+      input_paths: list of paths to input images
+      model_preproc: (model, preprocess) tuple of model extractor and
+        image preprocessing function
+      features: (n_database, N) array of features for logo database
+      threshold: fractional threshold for setting the cutoff
+    Returns:
+      img_input: list of iamges (3D np.arrays)
+      feat_input: (n_input, F) array of 1D features extracted from input images
+      cutoff_list: list of cutoffs for each input
+      (bins, cdf_list): bins specifications and list of CDF distributions
+        for similarity of the logo database against each input.
+    """
+
+    start = timer()
+    img_input = [brand]
+    model, my_preprocess = model_preproc
+    img_input = np.array(img_input)
+    feat_input = features_from_image(img_input, model, my_preprocess)
+
+    sim_cutoff, (bins, cdf_list) = similarity_cutoff(
+        feat_input, features, threshold, timing
+    )
+    t_sim_cut = timer() - start
+
+    return img_input, feat_input, sim_cutoff, (bins, cdf_list)
+
+
 def load_brands_compute_cutoffs(
     input_paths, model_preproc, features, threshold=0.95, timing=False
 ):

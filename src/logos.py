@@ -8,6 +8,25 @@ from similarity import draw_matches, similar_matches
 from utils import contents_of_bbox, features_from_image
 
 
+def detect_logo_with_loaded_image(yolo, img):
+    """
+    Call YOLO logo detector on input image, optionally save resulting image.
+
+    Args:
+      yolo: keras-yolo3 initialized YOLO instance
+      img: img
+    Returns:
+      prediction: list of bounding boxes in format (xmin,ymin,xmax,ymax,class_id,confidence)
+      image: unaltered input image as (H,W,C) array
+    """
+    image_array = img
+    image = Image.fromarray(img)
+
+    prediction, new_image = yolo.detect_image(image)
+
+    return prediction, image_array
+
+
 def detect_logo(yolo, img_path, save_img, save_img_path="./", postfix=""):
     """
     Call YOLO logo detector on input image, optionally save resulting image.
@@ -141,6 +160,36 @@ def match_logo(
         )
 
     return outtxt
+
+
+def match_logo_and_return_img(
+        img_test,
+        prediction,
+        model_preproc,
+        input_features_cdf_cutoff_labels,
+):
+    model, my_preprocess = model_preproc
+    feat_input, sim_cutoff, bins, cdf_list, input_labels = (
+        input_features_cdf_cutoff_labels
+    )
+    # from PIL image to np array
+    # img_test = np.array(image)
+
+    # img_test = cv2.imread(img_path) # could be removed by passing previous PIL image
+    candidates, i_candidates_too_small = contents_of_bbox(img_test, prediction)
+    # filter predicted bboxes to discard small logos
+    prediction = [
+        pred
+        for i, pred in enumerate(prediction)
+        if i not in i_candidates_too_small
+    ]
+    features_cand = features_from_image(candidates, model, my_preprocess)
+    matches, cos_sim = similar_matches(
+        feat_input, features_cand, sim_cutoff, bins, cdf_list
+    )
+
+    new_img = draw_matches(img_test, input_labels, prediction, matches)
+    return new_img
 
 
 def detect_video(yolo, video_path, output_path=""):

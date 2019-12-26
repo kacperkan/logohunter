@@ -11,3 +11,5 @@ dependencies:
   - flask=1.1.1
   - pillow=6.1.0
   - scikit-learn=0.21.3
+  - pip:
+      - flask_bootstrap
